@@ -1,0 +1,40 @@
+# ============================================================
+# VisionAI - Python Dependencies
+# ============================================================
+# Install with: pip install -r requirements.txt
+
+# Core ML Framework
+ultralytics>=8.3.0              # YOLOv11 (latest Ultralytics version)
+
+# Computer Vision
+opencv-python>=4.8.0            # Image/video processing
+numpy>=1.24.0                   # Numerical computing
+pillow>=9.5.0                   # Image handling
+
+# MLOps Stack
+mlflow>=2.9.0                   # Experiment tracking
+dagshub>=0.3.0                  # DagsHub integration
+dvc>=3.30.0                     # Data Version Control
+dvc-s3>=3.0.0                   # S3 remote storage support
+
+# Data Processing
+PyYAML>=6.0.0                   # YAML config handling
+pandas>=2.0.0                   # Data manipulation
+matplotlib>=3.7.0               # Plotting
+
+# Video Processing
+deep-sort-realtime>=1.3.2       # Object tracking (optional)
+
+# Development Tools
+tqdm>=4.65.0                    # Progress bars
+python-dotenv>=1.0.0            # Environment variables
+
+# Optional: GPU acceleration (uncomment if using NVIDIA GPU)
+# torch>=2.0.0+cu118            # PyTorch with CUDA 11.8
+# torchvision>=0.15.0+cu118     # TorchVision with CUDA 11.8
+
+# Optional: API deployment (uncomment if deploying backend API)
+# fastapi>=0.104.0              # Web API framework
+# uvicorn>=0.24.0               # ASGI server
+# python-multipart>=0.0.6       # File upload handling
+

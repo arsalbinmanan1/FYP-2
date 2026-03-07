@@ -1,0 +1,45 @@
+# ============================================================
+# VisionAI - YOLO Dataset Configuration Template
+# ============================================================
+# Copy this file to data.yaml and update paths after preparing your dataset
+#
+# Dataset structure should be:
+# data/processed/
+#   ├── train/
+#   │   ├── images/
+#   │   └── labels/
+#   ├── val/
+#   │   ├── images/
+#   │   └── labels/
+#   └── data.yaml
+
+# Path to dataset root (update this!)
+path: E:/FYP-2/computer-vision/data/processed
+
+# Train/val paths (relative to 'path')
+train: train/images
+val: val/images
+
+# Number of classes
+nc: 6
+
+# Class names
+names:
+  0: chair_broken
+  1: chair_wornout
+  2: sofa_broken
+  3: sofa_wornout
+  4: table_broken
+  5: table_wornout
+
+# ============================================================
+# Usage Instructions:
+# ============================================================
+# 1. Prepare your images in train/images and val/images
+# 2. Create YOLO format labels in train/labels and val/labels
+#    Label format: <class_id> <x_center> <y_center> <width> <height>
+#    All values are normalized (0-1)
+# 3. Rename this file to data.yaml
+# 4. Update the 'path' above to your absolute path
+# ============================================================
+

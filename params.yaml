@@ -1,0 +1,64 @@
+# ============================================================
+# VisionAI - Global Training Parameters
+# ============================================================
+# This file is used by DVC pipeline and training scripts
+# Modify these values to experiment with different configurations
+
+# Model Configuration
+model:
+  architecture: "yolo11s.pt"     # Base model: yolo11n.pt (nano), yolo11s.pt (small), yolo11m.pt (medium)
+  input_size: 640                # Input image size
+  num_classes: 6                 # Number of output classes
+
+# Training Hyperparameters
+train:
+  epochs: 50                     # Number of training epochs
+  batch_size: 16                 # Batch size (reduce if OOM)
+  learning_rate: 0.01            # Initial learning rate
+  optimizer: "auto"              # Optimizer: auto, SGD, Adam, AdamW
+  patience: 10                   # Early stopping patience
+  workers: 4                     # Data loader workers
+  amp: true                      # Automatic Mixed Precision (faster training on GPU)
+
+# Data Configuration  
+data:
+  config_path: "computer-vision/data/processed/data.yaml"
+  train_split: 0.8               # Training data split ratio
+  val_split: 0.2                 # Validation data split ratio
+  augmentation: true             # Enable data augmentation
+
+# Data Augmentation Settings (when augmentation: true)
+augmentation:
+  hsv_h: 0.015                   # Hue augmentation
+  hsv_s: 0.7                     # Saturation augmentation  
+  hsv_v: 0.4                     # Value augmentation
+  degrees: 10                    # Rotation degrees
+  translate: 0.1                 # Translation
+  scale: 0.5                     # Scale augmentation
+  flipud: 0.0                    # Vertical flip probability
+  fliplr: 0.5                    # Horizontal flip probability
+  mosaic: 1.0                    # Mosaic augmentation probability
+  mixup: 0.0                     # Mixup augmentation probability
+
+# Experiment Tracking (DagsHub + MLflow)
+experiment:
+  project_name: "VisionAI"
+  experiment_name: "YOLOv11-Household-Objects"
+  dagshub_owner: "arsal6010"     # Your DagsHub username
+  dagshub_repo: "FYP_visionAI"   # Your DagsHub repository name
+  mlflow_tracking: true          # Enable MLflow tracking
+
+# Output Paths
+output:
+  runs_dir: "VisionAI_Runs"      # Training runs directory
+  models_dir: "computer-vision/models"
+  
+# Classes (for reference - modify if adding new classes)
+classes:
+  - chair_broken
+  - chair_wornout
+  - sofa_broken
+  - sofa_wornout
+  - table_broken
+  - table_wornout
+

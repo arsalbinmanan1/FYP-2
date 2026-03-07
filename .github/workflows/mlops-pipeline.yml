@@ -1,0 +1,118 @@
+name: MLOps Pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "computer-vision/**"
+      - "params.yaml"
+      - "dvc.yaml"
+      - "requirements.txt"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_training:
+        description: "Run full training pipeline"
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: "3.12"
+  DAGSHUB_OWNER: ${{ secrets.DAGSHUB_OWNER }}
+  DAGSHUB_REPO: ${{ secrets.DAGSHUB_REPO }}
+  DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
+  MLFLOW_TRACKING_URI: https://dagshub.com/${{ secrets.DAGSHUB_OWNER }}/${{ secrets.DAGSHUB_REPO }}.mlflow
+  MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_OWNER }}
+  MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_USER_TOKEN }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.DAGSHUB_USER_TOKEN }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DAGSHUB_USER_TOKEN }}
+
+jobs:
+  lint-and-test:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install ultralytics opencv-python-headless numpy PyYAML dvc dvc-s3
+
+      - name: Validate DVC pipeline
+        run: dvc dag
+
+      - name: Validate params.yaml
+        run: python -c "import yaml; yaml.safe_load(open('params.yaml')); print('params.yaml OK')"
+
+      - name: Check Python sources
+        run: python -m py_compile computer-vision/src/train.py && python -m py_compile computer-vision/src/evaluate.py && python -m py_compile computer-vision/src/inference.py && echo "All sources compile OK"
+
+  dvc-pipeline:
+    name: DVC Reproduce
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_training == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Configure DVC remote
+        run: |
+          dvc remote modify origin endpointurl https://dagshub.com/${{ secrets.DAGSHUB_OWNER }}/${{ secrets.DAGSHUB_REPO }}.s3
+          dvc remote modify --local origin access_key_id ${{ secrets.DAGSHUB_USER_TOKEN }}
+          dvc remote modify --local origin secret_access_key ${{ secrets.DAGSHUB_USER_TOKEN }}
+
+      - name: Pull data from DVC
+        run: dvc pull -r origin || echo "No DVC-tracked data to pull"
+
+      - name: Run DVC pipeline
+        run: dvc repro
+
+      - name: Show metrics
+        run: dvc metrics show
+
+      - name: Push results to DVC
+        run: dvc push -r origin || echo "Nothing to push"
+
+      - name: Commit DVC lock
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add dvc.lock evaluation_results/metrics.json || true
+          git diff --cached --quiet || git commit -m "chore: update dvc.lock and metrics [skip ci]"
+          git push || true
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build

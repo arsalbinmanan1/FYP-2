@@ -1,0 +1,59 @@
+stages:
+  prepare_data:
+    cmd: python computer-vision/src/preprocess.py create-dataset --source computer-vision/data/raw --output computer-vision/data/processed --split ${data.train_split}
+    deps:
+      - computer-vision/data/raw
+      - computer-vision/src/preprocess.py
+    params:
+      - data.train_split
+      - data.val_split
+    outs:
+      - computer-vision/data/processed:
+          cache: false
+
+  train:
+    cmd: >-
+      python computer-vision/src/train.py
+      --data computer-vision/data/processed/data.yaml
+      --model ${model.architecture}
+      --epochs ${train.epochs}
+      --batch ${train.batch_size}
+      --lr ${train.learning_rate}
+      --patience ${train.patience}
+      --project ${output.runs_dir}
+      --name train
+      --dagshub-owner ${experiment.dagshub_owner}
+      --dagshub-repo ${experiment.dagshub_repo}
+    deps:
+      - computer-vision/data/processed
+      - computer-vision/src/train.py
+      - computer-vision/src/utils.py
+    params:
+      - model.architecture
+      - model.input_size
+      - train
+    outs:
+      - ${output.runs_dir}/train/weights:
+          cache: false
+
+  evaluate:
+    cmd: >-
+      python computer-vision/src/evaluate.py
+      --model ${output.runs_dir}/train/weights/best.pt
+      --data computer-vision/data/processed/data.yaml
+      --output evaluation_results
+    deps:
+      - ${output.runs_dir}/train/weights/best.pt
+      - computer-vision/data/processed
+      - computer-vision/src/evaluate.py
+    metrics:
+      - evaluation_results/metrics.json:
+          cache: false
+
+  export_model:
+    cmd: python -c "import shutil, pathlib; src=pathlib.Path('${output.runs_dir}/train/weights/best.pt'); dst=pathlib.Path('computer-vision/models/best.pt'); dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst); print(f'Exported {src} -> {dst}')"
+    deps:
+      - ${output.runs_dir}/train/weights/best.pt
+    outs:
+      - computer-vision/models/best.pt:
+          cache: false

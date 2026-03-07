@@ -1,0 +1,126 @@
+# ============================================================
+# VisionAI - Git Ignore
+# ============================================================
+
+# ===================== Python =====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ===================== Virtual Environments =====================
+venv/
+ENV/
+env/
+.venv/
+.env
+
+# ===================== IDE =====================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ===================== Jupyter =====================
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+# ===================== OS =====================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===================== ML/DL =====================
+# Training runs (tracked by MLflow instead)
+runs/
+VisionAI_Runs/
+wandb/
+
+# Large model files (tracked by DVC)
+*.pt
+*.pth
+*.onnx
+*.engine
+!yolov8n.pt
+!yolo11*.pt
+
+# ===================== Data =====================
+# Data is tracked by DVC, not Git
+*.zip
+*.tar.gz
+*.rar
+computer-vision/data/raw/*
+computer-vision/data/processed/*
+!computer-vision/data/raw/.gitkeep
+!computer-vision/data/processed/.gitkeep
+!computer-vision/data/processed/data.yaml.template
+
+# ===================== DVC =====================
+# DVC cache and local config (dvc.lock MUST be tracked)
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+
+# ===================== Logs & Outputs =====================
+*.log
+logs/
+output/
+crops/
+annotated_images/
+annotated_videos/
+evaluation_results/
+
+# ===================== Test Outputs =====================
+test_output/
+test_results/
+*.test.jpg
+*.test.png
+
+# ===================== Frontend =====================
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# ===================== Backend =====================
+backend/__pycache__/
+
+# ===================== Secrets =====================
+.env
+.env.local
+*.pem
+*.key
+secrets/
+credentials/
+

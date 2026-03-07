@@ -1,0 +1,6 @@
+[core]
+    remote = origin
+    autostage = true
+['remote "origin"']
+    url = s3://dvc
+    endpointurl = https://dagshub.com/arsal6010/FYP_visionAI.s3
