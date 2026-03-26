@@ -93,8 +93,7 @@ export default function Home() {
   const [cityQuery, setCityQuery] = useState("Lahore");
   const [showCityDropdown, setShowCityDropdown] = useState(false);
 
-  const [reportMd, setReportMd] = useState<string | null>(null);
-  const [generatingReport, setGeneratingReport] = useState(false);
+  const [generatingReport] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/`).then((r) => r.json()).then(setHealth).catch(() => setHealth(null));
@@ -107,7 +106,6 @@ export default function Home() {
     setResult(null);
     setError(null);
     setItems([]);
-    setReportMd(null);
     setView("upload");
   }, []);
 
@@ -141,7 +139,7 @@ export default function Home() {
 
   const reset = () => {
     setSelectedFile(null); setPreviewUrl(null); setResult(null);
-    setError(null); setItems([]); setReportMd(null); setView("upload");
+    setError(null); setItems([]); setView("upload");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -197,26 +195,8 @@ export default function Home() {
     } catch { updateItem(index, isExact ? { searchingExact: false } : { searchingAlt: false }); }
   };
 
-  const generateReport = async () => {
-    setGeneratingReport(true);
-    try {
-      const payload = items.map((it) => ({
-        detection: { class_name: it.detection.class_name, confidence: it.detection.confidence, furniture_type: it.detection.furniture_type, condition: it.detection.condition },
-        analysis: it.analysis,
-        search_results: { exact: it.exactResults, alternative: it.altResults },
-        city,
-      }));
-      const res = await fetch(`${API_URL}/report`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: payload }),
-      });
-      if (!res.ok) throw new Error("Report generation failed");
-      const data = await res.json();
-      setReportMd(data.report);
-      setView("report");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Report generation failed");
-    } finally { setGeneratingReport(false); }
+  const generateReport = () => {
+    setView("report");
   };
 
   const filteredCities = PAKISTAN_CITIES.filter((c) => c.toLowerCase().includes(cityQuery.toLowerCase()));
@@ -257,7 +237,10 @@ export default function Home() {
           />
         )}
         {view === "report" && (
-          <ReportView reportMd={reportMd} onBack={() => setView("results")} onPrint={() => window.print()} />
+          <ReportView
+            result={result} items={items} city={city}
+            onBack={() => setView("results")} onPrint={() => window.print()}
+          />
         )}
       </div>
     </div>
@@ -554,10 +537,10 @@ function ResultsView({
 
           <div className="self-end">
             <button onClick={onGenerateReport}
-              disabled={generatingReport || items.every((it) => !it.analysis)}
+              disabled={generatingReport}
               className="rounded-xl bg-gradient-to-r from-accent to-cyan-500 px-5 py-2.5 text-sm font-bold text-white transition-all hover:opacity-90 hover:shadow-lg hover:shadow-accent/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
-              {generatingReport ? <Spinner /> : <IconReport />}
-              {generatingReport ? "Generating..." : "Generate Report"}
+              <IconReport />
+              View Report
             </button>
           </div>
         </div>
@@ -675,24 +658,17 @@ function ItemCard({ item, index, city, onAnalyze, onSearchExact, onSearchAlt }: 
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={onSearchExact} disabled={item.searchingExact}
-            className="rounded-xl bg-gradient-to-r from-accent to-accent-light px-3 py-2.5 text-xs font-bold text-white transition-all hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-1.5">
-            {item.searchingExact ? <Spinner /> : <IconSearch />} Find Exact
-          </button>
-          <button onClick={onSearchAlt} disabled={item.searchingAlt}
-            className="rounded-xl glass border-accent/30 text-accent px-3 py-2.5 text-xs font-bold transition-all hover:bg-accent/10 disabled:opacity-40 flex items-center justify-center gap-1.5">
-            {item.searchingAlt ? <Spinner /> : <IconShuffle />} Alternative
-          </button>
-        </div>
+        <button onClick={onSearchExact} disabled={item.searchingExact}
+          className="w-full rounded-xl bg-gradient-to-r from-accent to-accent-light px-3 py-2.5 text-xs font-bold text-white transition-all hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-1.5">
+          {item.searchingExact ? <Spinner /> : <IconSearch />} Find Match
+        </button>
         <p className="text-[9px] text-center text-muted font-mono uppercase tracking-wider flex items-center justify-center gap-1">
           <IconMap className="h-3 w-3" /> {city}
         </p>
       </div>
 
       {/* Search Results */}
-      {item.exactResults.length > 0 && <SearchResults title="Exact Matches" results={item.exactResults} accent />}
-      {item.altResults.length > 0 && <SearchResults title="Alternatives" results={item.altResults} />}
+      {item.exactResults.length > 0 && <SearchResults title="Matches" results={item.exactResults} accent />}
     </div>
   );
 }
@@ -730,54 +706,265 @@ function SearchResults({ title, results, accent }: { title: string; results: Sea
 
 // ── Report View ──
 
-function ReportView({ reportMd, onBack, onPrint }: { reportMd: string | null; onBack: () => void; onPrint: () => void }) {
+function ReportView({ result, items, city, onBack, onPrint }: {
+  result: DetectionResult | null; items: ItemState[]; city: string;
+  onBack: () => void; onPrint: () => void;
+}) {
+  const analyzedItems = items.filter((it) => it.analysis);
+  const withMatches = items.filter((it) => it.exactResults.length > 0);
+  const totalMatches = items.reduce((s, it) => s + it.exactResults.length, 0);
+  const conditionCounts = items.reduce((acc, it) => {
+    const c = it.detection.condition || "unassessed";
+    acc[c] = (acc[c] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
   return (
-    <main className="mx-auto max-w-4xl px-6 py-8 animate-fade-up">
-      <div className="mb-6 flex items-center justify-between print:hidden">
-        <button onClick={onBack} className="flex items-center gap-2 rounded-xl glass px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors">
-          <IconBack /> Back to Items
-        </button>
-        <button onClick={onPrint}
-          className="rounded-xl bg-gradient-to-r from-accent to-cyan-500 px-5 py-2.5 text-sm font-bold text-white transition-all hover:opacity-90 flex items-center gap-2">
-          <IconPrint /> Print / Save PDF
-        </button>
-      </div>
-      <div className="glass rounded-2xl p-8 print:bg-white print:text-black print:border-gray-200">
-        <div className="prose prose-sm prose-invert max-w-none print:prose-neutral">
-          <MarkdownRenderer content={reportMd || ""} />
+    <>
+      {/* Print-only styles */}
+      <style>{`
+        @media print {
+          body { background: white !important; color: #1a1a2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .print-hide { display: none !important; }
+          .report-page { background: white !important; border: none !important; box-shadow: none !important; backdrop-filter: none !important; }
+          .report-page * { color: #1a1a2e !important; }
+          .report-header-bg { background: linear-gradient(135deg, #6366f1, #06b6d4) !important; }
+          .report-header-bg * { color: white !important; }
+          .report-stat-box { background: #f1f5f9 !important; border: 1px solid #e2e8f0 !important; }
+          .report-item-card { background: #f8fafc !important; border: 1px solid #e2e8f0 !important; page-break-inside: avoid; }
+          .report-table th { background: #f1f5f9 !important; }
+          .report-table td, .report-table th { border-color: #e2e8f0 !important; color: #1a1a2e !important; }
+          .report-badge { border: 1px solid #cbd5e1 !important; }
+          img { max-height: 200px !important; }
+        }
+      `}</style>
+
+      <main className="mx-auto max-w-4xl px-6 py-8 animate-fade-up">
+        {/* Toolbar */}
+        <div className="mb-6 flex items-center justify-between print-hide">
+          <button onClick={onBack} className="flex items-center gap-2 rounded-xl glass px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors">
+            <IconBack /> Back to Items
+          </button>
+          <button onClick={onPrint}
+            className="rounded-xl bg-gradient-to-r from-accent to-cyan-500 px-5 py-2.5 text-sm font-bold text-white transition-all hover:opacity-90 flex items-center gap-2">
+            <IconPrint /> Print / Save PDF
+          </button>
         </div>
-      </div>
-    </main>
+
+        {/* Report Document */}
+        <div className="report-page glass rounded-2xl overflow-hidden">
+
+          {/* ── Report Header ── */}
+          <div className="report-header-bg bg-gradient-to-r from-accent to-cyan-500 px-8 py-10 text-white">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 text-white font-bold text-xl backdrop-blur-sm">V</div>
+              <div>
+                <h1 className="text-2xl font-extrabold tracking-tight">VisionAI Assessment Report</h1>
+                <p className="text-sm opacity-80">Intelligent Furniture Detection & Marketplace Search</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm opacity-90 mt-4">
+              <span>Date: {today}</span>
+              <span>Location: {city}, Pakistan</span>
+              <span>Items Detected: {items.length}</span>
+              {result && <span>Resolution: {result.image_width}x{result.image_height}</span>}
+            </div>
+          </div>
+
+          {/* ── About Section ── */}
+          <div className="px-8 py-6 border-b border-border">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-muted mb-3 flex items-center gap-2">
+              <span className="h-1 w-6 rounded-full bg-gradient-to-r from-accent to-cyan-500 inline-block" /> About This Report
+            </h2>
+            <p className="text-sm leading-relaxed text-foreground/80">
+              This report was generated by <strong>VisionAI</strong>, an AI-powered system that uses <strong>YOLOv11</strong> computer vision
+              to detect household furniture in photographs and <strong>Google Gemini</strong> to analyze each item&apos;s attributes.
+              The system identifies furniture type, material, color, style, condition, and then searches local marketplaces
+              in <strong>{city}</strong> to find matching products with real pricing. This helps homeowners, buyers, and interior
+              professionals make informed decisions about furniture replacement, valuation, and sourcing.
+            </p>
+          </div>
+
+          {/* ── Image Overview ── */}
+          <div className="px-8 py-6 border-b border-border">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-muted mb-4 flex items-center gap-2">
+              <span className="h-1 w-6 rounded-full bg-gradient-to-r from-accent to-cyan-500 inline-block" /> Uploaded Image Analysis
+            </h2>
+            {result?.annotated_image && (
+              <div className="rounded-xl overflow-hidden ring-1 ring-white/10 mb-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={result.annotated_image} alt="Annotated" className="w-full max-h-[380px] object-contain bg-black/20" />
+              </div>
+            )}
+            <p className="text-sm text-foreground/70">
+              The uploaded image was analyzed using YOLOv11 object detection at a confidence threshold,
+              identifying <strong>{items.length} furniture item{items.length !== 1 ? "s" : ""}</strong>
+              {result && <> in a <strong>{result.image_width}x{result.image_height}</strong> resolution image</>}
+              {result && <> with an inference time of <strong>{result.inference_time_ms.toFixed(0)}ms</strong></>}.
+              Each detected item was individually cropped and sent to Gemini Vision AI for detailed attribute extraction.
+            </p>
+          </div>
+
+          {/* ── Summary Statistics ── */}
+          <div className="px-8 py-6 border-b border-border">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-muted mb-4 flex items-center gap-2">
+              <span className="h-1 w-6 rounded-full bg-gradient-to-r from-accent to-cyan-500 inline-block" /> Summary
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <ReportStat value={String(items.length)} label="Items Detected" />
+              <ReportStat value={String(analyzedItems.length)} label="AI Analyzed" />
+              <ReportStat value={String(withMatches.length)} label="With Matches" />
+              <ReportStat value={String(totalMatches)} label="Total Matches" />
+            </div>
+            {Object.keys(conditionCounts).length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {Object.entries(conditionCounts).map(([cond, count]) => (
+                  <span key={cond} className={`report-badge inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                    cond === "broken" || cond === "damaged" ? "bg-danger/10 text-danger border border-danger/20" :
+                    cond === "wornout" ? "bg-warning/10 text-warning border border-warning/20" :
+                    cond === "unassessed" ? "bg-surface text-muted border border-border" :
+                    "bg-success/10 text-success border border-success/20"
+                  }`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${
+                      cond === "broken" || cond === "damaged" ? "bg-danger" :
+                      cond === "wornout" ? "bg-warning" :
+                      cond === "unassessed" ? "bg-muted" : "bg-success"
+                    }`} />
+                    {cond}: {count}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Item-by-Item Analysis ── */}
+          <div className="px-8 py-6 border-b border-border">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-muted mb-5 flex items-center gap-2">
+              <span className="h-1 w-6 rounded-full bg-gradient-to-r from-accent to-cyan-500 inline-block" /> Detected Items
+            </h2>
+            <div className="space-y-5">
+              {items.map((item, idx) => (
+                <div key={idx} className="report-item-card rounded-xl bg-surface/30 border border-border overflow-hidden">
+                  {/* Item header */}
+                  <div className="flex gap-4 p-4">
+                    {item.cropImage && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.cropImage} alt={item.detection.class_name}
+                        className="h-20 w-20 rounded-lg object-cover ring-1 ring-white/10 flex-shrink-0" />
+                    )}
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between mb-1">
+                        <h3 className="font-bold capitalize">{item.detection.class_name}</h3>
+                        <span className="font-mono text-xs font-bold text-accent">{(item.detection.confidence * 100).toFixed(1)}%</span>
+                      </div>
+                      {item.detection.condition && (
+                        <span className={`report-badge inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ${
+                          item.detection.condition === "broken" || item.detection.condition === "damaged" ? "bg-danger/10 text-danger" :
+                          item.detection.condition === "wornout" ? "bg-warning/10 text-warning" : "bg-success/10 text-success"
+                        }`}>{item.detection.condition}</span>
+                      )}
+                      {item.analysis && (
+                        <p className="text-xs text-foreground/60 mt-2 italic">{item.analysis.description}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* AI Analysis attributes */}
+                  {item.analysis && (
+                    <div className="px-4 pb-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {[
+                          ["Type", item.analysis.type],
+                          ["Material", item.analysis.material],
+                          ["Color", item.analysis.color],
+                          ["Style", item.analysis.style],
+                          ["Size", item.analysis.approximate_dimensions],
+                          ["Condition", item.analysis.condition_assessment],
+                          ...(item.analysis.brand_guess ? [["Brand", item.analysis.brand_guess]] : []),
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-lg bg-background/50 px-3 py-2">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-muted">{label}</p>
+                            <p className="text-xs font-medium capitalize mt-0.5">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Matches table */}
+                  {item.exactResults.length > 0 && (
+                    <div className="border-t border-border">
+                      <div className="px-4 py-3">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-accent mb-2">
+                          Marketplace Matches in {city} ({item.exactResults.length})
+                        </p>
+                        <div className="overflow-x-auto">
+                          <table className="report-table w-full text-xs">
+                            <thead>
+                              <tr className="bg-surface/50">
+                                <th className="text-left px-3 py-2 font-semibold text-muted border-b border-border">#</th>
+                                <th className="text-left px-3 py-2 font-semibold text-muted border-b border-border">Product</th>
+                                <th className="text-left px-3 py-2 font-semibold text-muted border-b border-border">Store</th>
+                                <th className="text-right px-3 py-2 font-semibold text-muted border-b border-border">Price</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {item.exactResults.map((r, ri) => (
+                                <tr key={ri} className="border-b border-border/50 hover:bg-surface/30">
+                                  <td className="px-3 py-2 text-muted">{ri + 1}</td>
+                                  <td className="px-3 py-2 font-medium">
+                                    {r.link ? <a href={r.link} target="_blank" rel="noopener noreferrer" className="hover:text-accent">{r.title}</a> : r.title}
+                                  </td>
+                                  <td className="px-3 py-2 text-foreground/60">{r.store || "—"}</td>
+                                  <td className="px-3 py-2 text-right font-bold text-success whitespace-nowrap">
+                                    {r.price ? (typeof r.price === "number" ? `Rs. ${r.price.toLocaleString()}` : r.price) : "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {!item.analysis && item.exactResults.length === 0 && (
+                    <div className="px-4 pb-3">
+                      <p className="text-xs text-muted italic">This item was not analyzed or searched.</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Footer ── */}
+          <div className="px-8 py-6 text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-cyan-500 text-white font-bold text-xs">V</div>
+              <span className="text-sm font-bold gradient-text">VisionAI</span>
+            </div>
+            <p className="text-[10px] text-muted">
+              Generated on {today} &middot; Powered by YOLOv11 &amp; Google Gemini &middot; {city}, Pakistan
+            </p>
+            <p className="text-[9px] text-muted/50 mt-1">
+              This is an AI-generated assessment. Prices and availability are approximate and may vary.
+            </p>
+          </div>
+        </div>
+      </main>
+    </>
   );
 }
 
-// ── Markdown ──
-
-function MarkdownRenderer({ content }: { content: string }) {
-  return <div dangerouslySetInnerHTML={{ __html: mdToHtml(content) }} />;
-}
-
-function mdToHtml(md: string): string {
-  let h = md;
-  h = h.replace(/^### (.+)$/gm, "<h3>$1</h3>");
-  h = h.replace(/^## (.+)$/gm, "<h2>$1</h2>");
-  h = h.replace(/^# (.+)$/gm, "<h1>$1</h1>");
-  h = h.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  h = h.replace(/\*(.+?)\*/g, "<em>$1</em>");
-  h = h.replace(/`(.+?)`/g, "<code>$1</code>");
-  h = h.replace(/^\|(.+)\|$/gm, (m) => {
-    const cells = m.split("|").filter(Boolean).map((c) => c.trim());
-    if (cells.every((c) => /^[-:]+$/.test(c))) return "<!--sep-->";
-    return `<tr>${cells.map((c) => `<td class="border border-border px-3 py-1.5 text-xs">${c}</td>`).join("")}</tr>`;
-  });
-  h = h.replace(/((<tr>.*?<\/tr>\n?)+)/g, (block) =>
-    `<table class="w-full border-collapse border border-border text-sm">${block.replace(/<!--sep-->\n?/g, "")}</table>`
+function ReportStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="report-stat-box rounded-xl bg-surface/50 border border-border p-3 text-center">
+      <p className="text-2xl font-extrabold gradient-text">{value}</p>
+      <p className="text-[9px] text-muted uppercase tracking-wider mt-0.5">{label}</p>
+    </div>
   );
-  h = h.replace(/^- (.+)$/gm, "<li>$1</li>");
-  h = h.replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`);
-  h = h.replace(/^\d+\. (.+)$/gm, "<li>$1</li>");
-  h = h.replace(/^(?!<[hultdp]|<!--)(.+)$/gm, "<p>$1</p>");
-  return h;
 }
 
 // ── Utility Components ──
