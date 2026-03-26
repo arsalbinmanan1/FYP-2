@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "VisionAI - Furniture Condition Detection",
+  title: "VisionAI — Intelligent Furniture Detection & Search",
   description:
-    "Real-time household furniture condition assessment powered by YOLOv11",
+    "AI-powered household furniture detection, condition assessment, and smart marketplace search using YOLOv11 and Google Gemini.",
 };
 
 export default function RootLayout({
@@ -16,8 +17,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} antialiased`}>{children}</body>
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`${inter.variable} ${mono.variable} font-sans antialiased`}>
+        {children}
+      </body>
     </html>
   );
 }

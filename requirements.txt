@@ -39,3 +39,7 @@ ipykernel>=6.0.0                # Jupyter kernel
 fastapi>=0.104.0                # Web API framework
 uvicorn>=0.24.0                 # ASGI server
 python-multipart>=0.0.6         # File upload handling
+
+# ===================== LLM & Search =====================
+google-genai>=1.0.0             # Google Gemini API (Vision + Text)
+google-search-results>=2.4.0    # SerpAPI client (optional, for product search)

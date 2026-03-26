@@ -18,7 +18,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 PROJECT_ROOT = Path(__file__).parent.parent
+BACKEND_DIR = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT / "computer-vision" / "src"))
+sys.path.insert(0, str(BACKEND_DIR))
 from utils import get_latest_model
 
 app = FastAPI(
@@ -248,12 +250,29 @@ async def detect_annotated(
     )
 
 
+def crop_detections(image: np.ndarray, detections: list[dict]) -> list[str]:
+    """Crop each detected object and return as base64 JPEG strings."""
+    crops = []
+    for det in detections:
+        xmin, ymin, xmax, ymax = det["bbox"]
+        h, w = image.shape[:2]
+        xmin, ymin = max(0, xmin), max(0, ymin)
+        xmax, ymax = min(w, xmax), min(h, ymax)
+        crop = image[ymin:ymax, xmin:xmax]
+        if crop.size == 0:
+            crops.append("")
+            continue
+        _, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        crops.append(base64.b64encode(buf.tobytes()).decode("utf-8"))
+    return crops
+
+
 @app.post("/detect/full")
 async def detect_full(
     file: UploadFile = File(...),
     confidence: float = Query(0.5, ge=0.1, le=1.0),
 ):
-    """Returns both detections JSON and annotated image as base64."""
+    """Returns detections JSON, annotated image, and cropped images as base64."""
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(400, "File must be an image")
 
@@ -271,6 +290,8 @@ async def detect_full(
     _, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 90])
     b64_image = base64.b64encode(buffer.tobytes()).decode("utf-8")
 
+    cropped_images = crop_detections(image, detections)
+
     model = get_model()
     h, w = image.shape[:2]
     return {
@@ -280,8 +301,78 @@ async def detect_full(
         "image_width": w,
         "image_height": h,
         "annotated_image": f"data:image/jpeg;base64,{b64_image}",
+        "cropped_images": [f"data:image/jpeg;base64,{c}" if c else "" for c in cropped_images],
         "model_classes": list(model.names.values()),
     }
+
+
+# ── LLM Analysis & Search Endpoints ──
+
+
+class AnalyzeRequest(BaseModel):
+    crop_image: str  # base64 data URI or raw base64
+
+
+class SearchRequest(BaseModel):
+    analysis: dict
+    city: str
+    mode: str = "exact"  # "exact" or "alternative"
+
+
+class ReportRequest(BaseModel):
+    items: list[dict]
+
+
+def _strip_data_uri(b64_string: str) -> str:
+    """Remove data:image/...;base64, prefix if present."""
+    if "," in b64_string and b64_string.startswith("data:"):
+        return b64_string.split(",", 1)[1]
+    return b64_string
+
+
+@app.post("/analyze")
+async def analyze_furniture_endpoint(req: AnalyzeRequest):
+    """Send a cropped furniture image to Gemini Vision for analysis."""
+    from services.gemini_service import analyze_furniture
+
+    raw_b64 = _strip_data_uri(req.crop_image)
+    try:
+        analysis = analyze_furniture(raw_b64)
+        return {"status": "ok", "analysis": analysis}
+    except Exception as e:
+        err = str(e)
+        if "429" in err or "Too Many Requests" in err or "RESOURCE_EXHAUSTED" in err:
+            raise HTTPException(429, "Gemini rate limit reached. Please wait a moment and try again.")
+        if "API_KEY" in err or "api_key" in err.lower():
+            raise HTTPException(401, "Invalid or missing Gemini API key. Check your .env file.")
+        raise HTTPException(500, f"Gemini analysis failed: {err}")
+
+
+@app.post("/search")
+async def search_furniture_endpoint(req: SearchRequest):
+    """Search for furniture products based on Gemini analysis."""
+    from services.search_service import search_exact_match, search_alternative
+
+    try:
+        if req.mode == "alternative":
+            results = search_alternative(req.analysis, req.city)
+        else:
+            results = search_exact_match(req.analysis, req.city)
+        return {"status": "ok", "results": results, "mode": req.mode, "city": req.city}
+    except Exception as e:
+        raise HTTPException(500, f"Search failed: {e}")
+
+
+@app.post("/report")
+async def generate_report_endpoint(req: ReportRequest):
+    """Generate a comprehensive furniture report from all analyzed items."""
+    from services.gemini_service import generate_report
+
+    try:
+        report_md = generate_report(req.items)
+        return {"status": "ok", "report": report_md}
+    except Exception as e:
+        raise HTTPException(500, f"Report generation failed: {e}")
 
 
 if __name__ == "__main__":
