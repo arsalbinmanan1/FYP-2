@@ -40,30 +40,153 @@ def _get_serpapi_key() -> Optional[str]:
     return os.getenv("SERPAPI_KEY")
 
 
+def _as_search_token(val) -> str:
+    """Turn nested analysis values into a single search token; never a dict/list repr."""
+    if val is None:
+        return ""
+    if isinstance(val, str):
+        s = val.strip()
+        if s.lower() in ("unknown", "null", "none", "n/a"):
+            return ""
+        return s
+    if isinstance(val, bool):
+        return str(val).lower()
+    if isinstance(val, (int, float)):
+        return str(val)
+    if isinstance(val, list):
+        return " ".join(_as_search_token(x) for x in val if x is not None)
+    if isinstance(val, dict):
+        return ""
+    return str(val).strip()
+
+
+def _brand_phrase(analysis: dict) -> str:
+    b = analysis.get("brand_and_market_analysis")
+    if isinstance(b, dict):
+        return _as_search_token(b.get("brand_guess"))
+    return _as_search_token(analysis.get("brand_guess"))
+
+
+def _type_phrase(analysis: dict) -> str:
+    t = analysis.get("type")
+    if isinstance(t, dict):
+        bits = []
+        for key in ("main_category", "specific_type", "functional_use"):
+            bits.append(_as_search_token(t.get(key)))
+        rs = t.get("room_suitability")
+        if isinstance(rs, list):
+            bits.append(_as_search_token(rs))
+        return " ".join(b for b in bits if b)
+    return _as_search_token(t)
+
+
+def _material_phrase(analysis: dict) -> str:
+    m = analysis.get("materials")
+    if isinstance(m, dict):
+        bits = [
+            _as_search_token(m.get("primary_material")),
+            _as_search_token(m.get("upholstery_material")),
+            _as_search_token(m.get("frame_material")),
+            _as_search_token(m.get("surface_finish")),
+        ]
+        sec = m.get("secondary_materials")
+        if isinstance(sec, list):
+            bits.append(_as_search_token(sec))
+        return " ".join(b for b in bits if b)
+    return _as_search_token(analysis.get("material"))
+
+
+def _color_phrase(analysis: dict) -> str:
+    c = analysis.get("colors")
+    if isinstance(c, dict):
+        bits = []
+        for key in ("dominant_colors", "accent_colors"):
+            v = c.get(key)
+            if isinstance(v, list):
+                bits.append(_as_search_token(v))
+            else:
+                bits.append(_as_search_token(v))
+        bits.append(_as_search_token(c.get("pattern_details")))
+        return " ".join(b for b in bits if b)
+    return _as_search_token(analysis.get("color"))
+
+
+def _style_phrase(analysis: dict) -> str:
+    d = analysis.get("design_analysis")
+    if isinstance(d, dict):
+        bits = []
+        st = d.get("style")
+        if isinstance(st, list):
+            bits.append(_as_search_token(st))
+        else:
+            bits.append(_as_search_token(st))
+        bits.append(_as_search_token(d.get("shape_language")))
+        bits.append(_as_search_token(d.get("visual_weight")))
+        return " ".join(b for b in bits if b)
+    return _as_search_token(analysis.get("style"))
+
+
+def _dimensions_phrase(analysis: dict) -> str:
+    de = analysis.get("dimensions_estimate")
+    if isinstance(de, dict):
+        bits = [
+            _as_search_token(de.get("size_category")),
+            _as_search_token(de.get("estimated_seating_capacity")),
+            _as_search_token(de.get("space_usage")),
+        ]
+        ed = de.get("estimated_dimensions_cm")
+        if isinstance(ed, dict):
+            for key in ("width", "depth", "height"):
+                bits.append(_as_search_token(ed.get(key)))
+        return " ".join(b for b in bits if b)
+    return _as_search_token(analysis.get("approximate_dimensions"))
+
+
+def _search_keywords_phrase(analysis: dict) -> str:
+    kw = analysis.get("search_keywords")
+    if isinstance(kw, list):
+        return _as_search_token(kw)
+    return _as_search_token(kw)
+
+
 def _build_exact_query(analysis: dict, city: str) -> str:
     parts = []
-    if analysis.get("brand_guess"):
-        parts.append(analysis["brand_guess"])
-    if analysis.get("type"):
-        parts.append(analysis["type"])
-    if analysis.get("material"):
-        parts.append(analysis["material"])
-    if analysis.get("color"):
-        parts.append(analysis["color"])
-    if analysis.get("style"):
-        parts.append(analysis["style"])
+    b = _brand_phrase(analysis)
+    if b:
+        parts.append(b)
+    t = _type_phrase(analysis)
+    if t:
+        parts.append(t)
+    m = _material_phrase(analysis)
+    if m:
+        parts.append(m)
+    c = _color_phrase(analysis)
+    if c:
+        parts.append(c)
+    s = _style_phrase(analysis)
+    if s:
+        parts.append(s)
+    kw = _search_keywords_phrase(analysis)
+    if kw:
+        parts.append(kw)
     parts.append(f"buy in {city} {COUNTRY}")
     return " ".join(parts)
 
 
 def _build_alternative_query(analysis: dict, city: str) -> str:
     parts = []
-    if analysis.get("approximate_dimensions"):
-        parts.append(analysis["approximate_dimensions"])
-    if analysis.get("type"):
-        parts.append(analysis["type"])
-    if analysis.get("style"):
-        parts.append(analysis["style"])
+    d = _dimensions_phrase(analysis)
+    if d:
+        parts.append(d)
+    t = _type_phrase(analysis)
+    if t:
+        parts.append(t)
+    s = _style_phrase(analysis)
+    if s:
+        parts.append(s)
+    kw = _search_keywords_phrase(analysis)
+    if kw:
+        parts.append(kw)
     parts.append(f"furniture in {city} {COUNTRY}")
     return " ".join(parts)
 

@@ -7,6 +7,7 @@ import os
 import json
 import base64
 import time
+from textwrap import dedent
 
 from google import genai
 from google.genai import types
@@ -63,20 +64,126 @@ def analyze_furniture(crop_base64: str) -> dict:
     client = _get_client()
     image_bytes = base64.b64decode(crop_base64)
 
-    prompt = """Analyze this furniture image and return a JSON object with these fields:
-{
-  "type": "the furniture type, e.g. sofa, chair, table, bed, cabinet",
-  "material": "primary material, e.g. wood, metal, fabric, leather, plastic",
-  "color": "dominant color(s)",
-  "style": "design style, e.g. modern, traditional, mid-century, industrial",
-  "approximate_dimensions": "rough size description, e.g. 3-seater, large, compact",
-  "condition_assessment": "good, fair, worn, damaged — with brief explanation",
-  "brand_guess": "brand name if identifiable, otherwise null",
-  "search_keywords": "comma-separated keywords ideal for searching this exact item online",
-  "description": "one-sentence natural language description of the item"
-}
+    prompt = dedent(
+        """
+        You are an expert furniture authenticator, interior designer, materials analyst, and second-hand marketplace evaluator.
 
-Return ONLY valid JSON, no markdown fences or extra text."""
+        Your task is to analyze the uploaded furniture image with extreme precision and extract every visually inferable detail possible. Focus on structure, craftsmanship, materials, wear, proportions, aesthetics, functionality, and marketplace relevance.
+
+        Return a JSON object with the following schema:
+
+        {
+          "type": {
+            "main_category": "primary furniture category",
+            "specific_type": "more precise type classification",
+            "functional_use": "intended practical use",
+            "room_suitability": ["living room", "office", "bedroom"]
+          },
+
+          "materials": {
+            "primary_material": "main visible material",
+            "secondary_materials": ["list", "of", "additional", "materials"],
+            "upholstery_material": "fabric/leather/velvet/etc or null",
+            "frame_material": "wood/metal/plastic/etc or null",
+            "surface_finish": "matte, glossy, lacquered, distressed, brushed, polished, etc",
+            "material_confidence": "high/medium/low"
+          },
+
+          "colors": {
+            "dominant_colors": ["main visible colors"],
+            "accent_colors": ["secondary/accent colors"],
+            "color_temperature": "warm/cool/neutral",
+            "pattern_details": "solid, striped, textured, floral, geometric, etc"
+          },
+
+          "design_analysis": {
+            "style": ["modern", "mid-century", "industrial", "scandinavian", etc],
+            "design_influences": ["possible design inspirations or eras"],
+            "shape_language": "boxy, curved, minimalist, angular, organic, etc",
+            "visual_weight": "light, balanced, bulky, heavy",
+            "luxury_level": "budget, mid-range, premium, luxury"
+          },
+
+          "construction_details": {
+            "leg_style": "tapered, hidden, metal frame, caster wheels, etc",
+            "armrest_style": "rolled, track, armless, curved, etc",
+            "backrest_style": "tufted, straight, reclined, paneled, etc",
+            "cushion_structure": "fixed, removable, segmented, plush, firm",
+            "joinery_or_build_quality_notes": "visible craftsmanship observations"
+          },
+
+          "dimensions_estimate": {
+            "size_category": "compact, medium, oversized",
+            "estimated_seating_capacity": "1-seater, 2-seater, 3-seater, etc",
+            "estimated_dimensions_cm": {
+              "width": "approximate width range",
+              "depth": "approximate depth range",
+              "height": "approximate height range"
+            },
+            "space_usage": "small apartment friendly, office scale, large-room furniture, etc"
+          },
+
+          "condition_assessment": {
+            "overall_condition": "excellent, good, fair, worn, damaged",
+            "wear_level": "minimal, moderate, heavy",
+            "visible_damage": ["scratches", "fabric pilling", "stains", "dents", etc],
+            "structural_integrity_guess": "stable, possibly loose, unknown",
+            "restoration_needed": true,
+            "cleanliness_assessment": "clean, dusty, stained, aged, etc",
+            "condition_summary": "short expert-level explanation"
+          },
+
+          "ergonomics_and_comfort": {
+            "comfort_level_guess": "soft, firm, ergonomic, lounge-oriented, etc",
+            "posture_support": "upright, relaxed, reclining, neutral",
+            "intended_usage_duration": "short-term sitting, extended lounging, work seating, etc"
+          },
+
+          "brand_and_market_analysis": {
+            "brand_guess": "possible manufacturer or null",
+            "brand_confidence": "high/medium/low",
+            "estimated_price_range_usd": {
+              "new": "estimated retail range",
+              "used": "estimated resale range"
+            },
+            "marketplace_category": "ikea-style, designer furniture, vintage collectible, mass-market, handcrafted, etc"
+          },
+
+          "photo_analysis": {
+            "image_quality": "high/medium/low",
+            "visible_angle": "front, side, angled, top-down, etc",
+            "occlusion_notes": "parts hidden or unclear",
+            "background_context": "environment clues from surroundings"
+          },
+
+          "search_keywords": [
+            "highly specific search phrases optimized for marketplace and reverse image search"
+          ],
+
+          "tags": [
+            "short marketplace tags"
+          ],
+
+          "description": "A detailed one-to-two sentence natural language description written like a premium marketplace listing.",
+
+          "confidence_score": {
+            "overall_analysis_confidence": 0-100
+          }
+        }
+
+        Important instructions:
+        - Be extremely observant and infer as many realistic details as possible from visual evidence.
+        - Do NOT leave fields empty unless absolutely impossible to infer.
+        - If uncertain, provide best-effort educated guesses with lower confidence wording.
+        - Use marketplace-friendly terminology suitable for eBay, Facebook Marketplace, Chairish, IKEA search, Wayfair search, and Google Lens optimization.
+        - Capture tiny details like stitching, tufting, grain texture, edge profile, leg geometry, hardware style, and visible wear patterns.
+        - Infer probable manufacturing quality and price tier from appearance.
+        - Search keywords should be highly descriptive and long-tail optimized.
+        - Return ONLY valid JSON.
+        - Do not use markdown fences.
+        - Do not include explanations outside the JSON.
+        """
+    ).strip()
 
     response = _call_with_retry(
         client.models.generate_content,
